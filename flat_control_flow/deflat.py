@@ -8,6 +8,7 @@ import angr
 import pyvex
 import claripy
 import struct
+import loguru
 from collections import defaultdict
 
 import am_graph
@@ -86,10 +87,13 @@ def main():
     start = int(args.addr, 16)
 
     project = angr.Project(filename, load_options={'auto_load_libs': False})
+    # Generate a static CFG => cfg = p.analyses.CFGFast()
     # do normalize to avoid overlapping blocks, disable force_complete_scan to avoid possible "wrong" blocks
     cfg = project.analyses.CFGFast(normalize=True, force_complete_scan=False)
+    # ref: https://docs.angr.io/en/latest/analyses/cfg.html#function-manager
     target_function = cfg.functions.get(start)
     # A super transition graph is a graph that looks like IDA Pro's CFG
+    # transition graph是一个做函数内部控制流可视化的有向图 (类型:networkx.DiGraph)
     supergraph = am_graph.to_supergraph(target_function.transition_graph)
 
     base_addr = project.loader.main_object.mapped_base >> 12 << 12
