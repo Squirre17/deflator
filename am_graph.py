@@ -1,4 +1,7 @@
 
+from pprint import pprint
+from loguru import logger
+import pdb
 import itertools
 from collections import defaultdict
 
@@ -13,7 +16,7 @@ def grouper(iterable, n, fillvalue=None):
     return itertools.izip_longest(*args, fillvalue=fillvalue)
 
 
-def to_supergraph(transition_graph):
+def to_supergraph(transition_graph: networkx.DiGraph):
     """
     Convert transition graph of a function to a super transition graph. A super transition graph is a graph that looks
     like IDA Pro's CFG, where calls to returning functions do not terminate basic blocks.
@@ -28,35 +31,51 @@ def to_supergraph(transition_graph):
 
     # remove all edges that transitions to outside
     for src, dst, data in list(transition_graph.edges(data=True)):
+        # pprint(data)
+        # {'ins_addr': 4195661, 'outside': False, 'stmt_idx': None, 'type': 'transition'}
+        # ref: https://github.com/angr/angr/blob/36052256cc10f580005f8ca189c27d35ec5044ca/angr/knowledge_plugins/functions/function.py#L1411
+        # transition边就是 正常基本块之间的转换 异常边应该是系统调用或者异常之类的状态转换
+        # "outside transition edge"（外部转移边）是指从当前二进制程序的基本块转移到其他函数或者代码模块的转移边 这里全去除
         if data['type'] in ('transition', 'exception') and data.get('outside', False) is True:
             transition_graph.remove_edge(src, dst)
-        if transition_graph.in_degree(dst) == 0:
-            transition_graph.remove_node(dst)
+        # 这里存在原作者一个逻辑错误 一个图的所有边 怎么可能存在一个边的入度为0呢？
+        # assert  transition_graph.in_degree(dst) != 0
+        # if transition_graph.in_degree(dst) == 0: # 入度为0 这是一条多余的边
+            # transition_graph.remove_node(dst)
 
     edges_to_shrink = set()
 
     # Find all edges to remove in the super graph
     for src in transition_graph.nodes():
-        edges = transition_graph[src]
+        dsts = transition_graph[src]
 
         # there are two types of edges we want to remove:
-        # - call or fakerets, since we do not want blocks to break at calls
-        # - boring jumps that directly transfer the control to the block immediately after the current block. this is
-        #   usually caused by how VEX breaks down basic blocks, which happens very often in MIPS
+        # - call or fake-rets, since we do not want blocks to break at calls
+        # - boring jumps that directly transfer the control to the block immediately after the current block.(就是非条件跳转) this is
+        #   usually caused by how VEX(angr用的ir分析器) breaks down basic blocks, which happens very often in MIPS
 
-
-
-        if len(edges) == 1 and src.addr + src.size == next(iter(edges.keys())).addr:
-            dst = next(iter(edges.keys()))
+        # 这里的edges是一个Mapping, edges.keys()就是所有的src
+        # edges: AtlasView({<BlockNode at 0x400554 (size 23)>: {'type': 'transition', 'outside': False, 'ins_addr': 4195661, 'stmt_idx': None}})
+        # 只有一条边 且这个边的src的地址加上src基本块的大小正好是dst的地址 就是上文的boring jumps
+        '''
+        |-----------------| <- src.addr
+        |                 |    src.size
+        |-----------------|------------ <<- dst.addr
+        |                 |
+        |                 |
+        '''
+        if len(dsts) == 1 and src.addr + src.size == next(iter(dsts.keys())).addr:
+            dst = next(iter(dsts.keys()))
             dst_in_edges = transition_graph.in_edges(dst)
-            if len(dst_in_edges) == 1:
+            # pdb.set_trace()
+            if len(dst_in_edges) == 1:# 只有一个入边 代表着两个基本块挨在一起 且直接跳转过来
                 edges_to_shrink.add((src, dst))
                 continue
 
-        if any(iter('type' in data and data['type'] not in ('fake_return', 'call') for data in edges.values())):
+        if any(iter('type' in data and data['type'] not in ('fake_return', 'call') for data in dsts.values())):
             continue
 
-        for dst, data in edges.items():
+        for dst, data in dsts.items():
             if isinstance(dst, Function):
                 continue
             if 'type' in data and data['type'] == 'fake_return':
