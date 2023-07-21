@@ -2,6 +2,7 @@
 
 import struct
 import hashlib
+import pdb
 
 ARCH_X86 = {"X86", "AMD64"}
 ARCH_ARM = {"ARMEL", "ARMHF"}
@@ -55,10 +56,10 @@ def ins_j_jmp_hex_x86(cur_addr, target_addr, j_cond):
         j_opcode = OPCODES['x86']['jmp']
         j_ins_size = 5
     else:
-        j_opcode = OPCODES['x86']['j'] + OPCODES['x86'][j_cond]
+        j_opcode = OPCODES['x86']['j'] + OPCODES['x86'][j_cond] # 条件跳转指令
         j_ins_size = 6
 
-    jmp_offset = target_addr - cur_addr - j_ins_size
+    jmp_offset = target_addr - cur_addr - j_ins_size # 计算的关键
     patch_ins_hex = j_opcode + struct.pack('<i', jmp_offset)
     return patch_ins_hex
 

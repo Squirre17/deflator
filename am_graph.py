@@ -54,6 +54,11 @@ def to_supergraph(transition_graph: networkx.DiGraph):
         # - boring jumps that directly transfer the control to the block immediately after the current block.(就是非条件跳转) this is
         #   usually caused by how VEX(angr用的ir分析器) breaks down basic blocks, which happens very often in MIPS
 
+        # fake_return is an edge from a block that ends with a function call to the return site of the call
+        # as opposed to a real return edge that comes from the called function
+        # and it is generated in cfg analysis (cfgfast)
+
+        
         # 这里的edges是一个Mapping, edges.keys()就是所有的src
         # edges: AtlasView({<BlockNode at 0x400554 (size 23)>: {'type': 'transition', 'outside': False, 'ins_addr': 4195661, 'stmt_idx': None}})
         # 只有一条边 且这个边的src的地址加上src基本块的大小正好是dst的地址 就是上文的boring jumps
