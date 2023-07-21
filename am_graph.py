@@ -71,15 +71,40 @@ def to_supergraph(transition_graph: networkx.DiGraph):
             if len(dst_in_edges) == 1:# 只有一个入边 代表着两个基本块挨在一起 且直接跳转过来
                 edges_to_shrink.add((src, dst))
                 continue
-
+        '''
+        _FUNCTION_EDGETYPES = {
+            None: Edge.UnknownJumpkind,
+            "transition": Edge.Boring,
+            "call": Edge.Call,
+            "return": Edge.Return,
+            "fake_return": Edge.FakeReturn,
+            "syscall": Edge.Syscall,
+            "exception": Edge.Exception,
+        }
+        '''
+        # A fake_ret edge is an edge between call site and (the supposedly) return target.
+        # fake_ret 应该就是call到下一个基本块之间的边 类似于如下
+        '''
+          400965:       e8 a6 fa ff ff          call   400410 <puts@plt>
+          ----------------------------------------------------------------------- fake ret edge
+          40096a:       c7 45 e4 1e e3 f7 cd    mov    DWORD PTR [rbp-0x1c],0xcdf7e31e
+          400971:       89 85 64 ff ff ff       mov    DWORD PTR [rbp-0x9c],eax
+          400977:       e9 1f 00 00 00          jmp    40099b <check_password+0x46b>
+          40097c:       c7 45 fc 00 00 00 00    mov    DWORD PTR [rbp-0x4],0x0
+          400983:       c7 45 e4 2b 15 ee e9    mov    DWORD PTR [rbp-0x1c],0xe9ee152b
+          40098a:       e9 0c 00 00 00          jmp    40099b <check_password+0x46b>
+          40098f:       8b 45 fc                mov    eax,DWORD PTR [rbp-0x4]
+        '''
         if any(iter('type' in data and data['type'] not in ('fake_return', 'call') for data in dsts.values())):
             continue
-
+        
+        # shrink掉call的边
         for dst, data in dsts.items():
             if isinstance(dst, Function):
                 continue
             if 'type' in data and data['type'] == 'fake_return':
-                if all(iter('type' in data and data['type'] in ('fake_return', 'return_from_call')
+                # 我严重怀疑没有return_from_call这个类型...... 还真没有
+                if all(iter('type' in data and data['type'] is 'fake_return'
                             for _, _, data in transition_graph.in_edges(dst, data=True))):
                     edges_to_shrink.add((src, dst))
                 break
