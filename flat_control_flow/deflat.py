@@ -63,7 +63,7 @@ def symbolic_execution(project: angr.Project, relevant_block_addrs, start_addr, 
             400881:       e9 15 01 00 00          jmp    40099b <check_password+0x46b>
             '''
             state.scratch.temps[expressions[0].cond.tmp] = modify_value
-            state.inspect._breakpoints['statement'] = []
+            state.inspect._breakpoints['statement'] = [] # 清零断点
 
     if hook_addrs is not None:# 有call指令 
         skip_length = 4
@@ -90,7 +90,8 @@ def symbolic_execution(project: angr.Project, relevant_block_addrs, start_addr, 
             'statement', when=angr.state_plugins.inspect.BP_BEFORE, action=statement_inspect
         )
     sm = project.factory.simulation_manager(state)
-    sm.step()# 我疑惑step好久停？
+    sm.step()# step 在每次statement的时候都要停 遇到了ITE就清除inspect断点 就不会停了
+    breakpoint() # 调试中发现都停在了真实块
     while len(sm.active) > 0:
         for active_state in sm.active:
             if active_state.addr in relevant_block_addrs:
@@ -285,7 +286,6 @@ def main():
                     patch_value = patch_value[::-1]
             patch_instruction(origin_data, file_offset, patch_value)
         else:# 从这个真实块出去能到达多个真实块 那么这个基本块就是负责控制分支的 而不参与具体的运算
-            pdb.set_trace()
             instr = patch_instrs[parent] # 前面加入的cmov指令
             file_offset = instr.address - base_addr
             # patch instructions starting from `cmovx` to the end of block
