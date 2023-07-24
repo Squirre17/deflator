@@ -50,10 +50,11 @@ def symbolic_execution(project: angr.Project, relevant_block_addrs, start_addr, 
         project.unhook(ip)# 解除对当前ip的hook 也就是call的地址
         return
 
-    def statement_inspect(state):
+    def statement_inspect(state: angr.sim_state.SimState):
         expressions = list(
             state.scratch.irsb.statements[state.inspect.statement].expressions
         )
+        # breakpoint()
         if len(expressions) != 0 and isinstance(expressions[0], pyvex.expr.ITE):
             '''
     ip  --> 400874:       81 7d e8 a1 01 00 00    cmp    DWORD PTR [rbp-0x18],0x1a1
@@ -62,15 +63,35 @@ def symbolic_execution(project: angr.Project, relevant_block_addrs, start_addr, 
             40087e:       89 45 e4                mov    DWORD PTR [rbp-0x1c],eax
             400881:       e9 15 01 00 00          jmp    40099b <check_password+0x46b>
             '''
+            # state.scratch.temps 是ir的临时变量 e.g. claripy.ast.bv.BV
+            # expressions[0].cond.tmp 是expr中某个字段的值 tmp是索引 可以在state.scratch.temps中获取clarify的节点 
+            '''
+            在pyvex中 一个stmt会被拆分成多个expr
+            例如一个stmt如下
+            t30 = 32Uto64(t2)
+            它的exprs: 
+            32Uto64(t2)
+            t2
+
+
+            在arm上一条简单的指令 subs R2, R2, #8 会被拆封成多个expressions
+            t0 = GET:I32(16)
+            t1 = 0x8:I32
+            t3 = Sub32(t0,t1)
+            PUT(16) = t3
+            PUT(68) = 0x59FC8:I32
+            '''
             state.scratch.temps[expressions[0].cond.tmp] = modify_value
+            # breakpoint()
             state.inspect._breakpoints['statement'] = [] # 清零断点
+            # state.inspect.remove_breakpoint("statement", bp) # 清零断点
 
     if hook_addrs is not None:# 有call指令 
         skip_length = 4
         if project.arch.name in ARCH_X86:
             skip_length = 5
 
-        # 对于所有的call指令 全部跳过 啥都不做 不太懂？？
+        # 对于所有的call指令 全部跳过 啥都不做 因为这个是模拟执行 不能影响实际的程序
         for hook_addr in hook_addrs:
             project.hook(hook_addr, retn_procedure, length=skip_length)
 
@@ -89,11 +110,13 @@ def symbolic_execution(project: angr.Project, relevant_block_addrs, start_addr, 
         state.inspect.b(
             'statement', when=angr.state_plugins.inspect.BP_BEFORE, action=statement_inspect
         )
-    sm = project.factory.simulation_manager(state)
-    sm.step()# step 在每次statement的时候都要停 遇到了ITE就清除inspect断点 就不会停了
-    breakpoint() # 调试中发现都停在了真实块
+    sm: angr.sim_manager.SimulationManager = project.factory.simulation_manager(state)
+    sm.step()# 每次step走一个基本块
+        
+    # breakpoint() # 调试中发现都停在了真实块
     while len(sm.active) > 0:
         for active_state in sm.active:
+            # loguru.logger.debug(hex(active_state.addr)) # 停在某个基本块开头
             if active_state.addr in relevant_block_addrs:
                 # 经过调试 这里就是某个real block的开头地址
                 return active_state.addr
